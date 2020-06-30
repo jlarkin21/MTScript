@@ -1,119 +1,168 @@
 //+------------------------------------------------------------------+
-//|                                                         MACD.mq5 |
+//|                                                   ExpertMACD.mq5 |
 //|                   Copyright 2009-2017, MetaQuotes Software Corp. |
 //|                                              http://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright   "2009-2017, MetaQuotes Software Corp."
-#property link        "http://www.mql5.com"
-#property description "Moving Average Convergence/Divergence"
-#include <MovingAverages.mqh>
-//--- indicator settings
-#property indicator_separate_window
-#property indicator_buffers 4
-#property indicator_plots   2
-#property indicator_type1   DRAW_HISTOGRAM
-#property indicator_type2   DRAW_LINE
-#property indicator_color1  Silver
-#property indicator_color2  Red
-#property indicator_width1  2
-#property indicator_width2  1
-#property indicator_label1  "MACD"
-#property indicator_label2  "Signal"
-//--- input parameters
-input int                InpFastEMA=12;               // Fast EMA period
-input int                InpSlowEMA=26;               // Slow EMA period
-input int                InpSignalSMA=9;              // Signal SMA period
-input ENUM_APPLIED_PRICE InpAppliedPrice=PRICE_CLOSE; // Applied price
-//--- indicator buffers
-double                   ExtMacdBuffer[];
-double                   ExtSignalBuffer[];
-double                   ExtFastMaBuffer[];
-double                   ExtSlowMaBuffer[];
-//--- MA handles
-int                      ExtFastMaHandle;
-int                      ExtSlowMaHandle;
+#property copyright "2009-2017, MetaQuotes Software Corp."
+#property link      "http://www.mql5.com"
+#property version   "1.00"
 //+------------------------------------------------------------------+
-//| Custom indicator initialization function                         |
+//| Include                                                          |
 //+------------------------------------------------------------------+
-void OnInit()
+#include <Expert\Expert.mqh>
+#include <Expert\Signal\SignalMACD.mqh>
+#include <Expert\Trailing\TrailingNone.mqh>
+#include <Expert\Money\MoneyNone.mqh>
+//+------------------------------------------------------------------+
+//| Inputs                                                           |
+//+------------------------------------------------------------------+
+//--- inputs for expert
+input string Inp_Expert_Title            ="ExpertMACD";
+int          Expert_MagicNumber          =10981;
+bool         Expert_EveryTick            =false;
+//--- inputs for signal
+input int    Inp_Signal_MACD_PeriodFast  =12;
+input int    Inp_Signal_MACD_PeriodSlow  =24;
+input int    Inp_Signal_MACD_PeriodSignal=9;
+input int    Inp_Signal_MACD_TakeProfit  =50;
+input int    Inp_Signal_MACD_StopLoss    =20;
+//+------------------------------------------------------------------+
+//| Global expert object                                             |
+//+------------------------------------------------------------------+
+CExpert ExtExpert;
+//+------------------------------------------------------------------+
+//| Initialization function of the expert                            |
+//+------------------------------------------------------------------+
+int OnInit(void)
   {
-//--- indicator buffers mapping
-   SetIndexBuffer(0,ExtMacdBuffer,INDICATOR_DATA);
-   SetIndexBuffer(1,ExtSignalBuffer,INDICATOR_DATA);
-   SetIndexBuffer(2,ExtFastMaBuffer,INDICATOR_CALCULATIONS);
-   SetIndexBuffer(3,ExtSlowMaBuffer,INDICATOR_CALCULATIONS);
-//--- sets first bar from what index will be drawn
-   PlotIndexSetInteger(1,PLOT_DRAW_BEGIN,InpSignalSMA-1);
-//--- name for Dindicator subwindow label
-   IndicatorSetString(INDICATOR_SHORTNAME,"MACD("+string(InpFastEMA)+","+string(InpSlowEMA)+","+string(InpSignalSMA)+")");
-//--- get MA handles
-   ExtFastMaHandle=iMA(NULL,0,InpFastEMA,0,MODE_EMA,InpAppliedPrice);
-   ExtSlowMaHandle=iMA(NULL,0,InpSlowEMA,0,MODE_EMA,InpAppliedPrice);
-//--- initialization done
+//--- Initializing expert
+   if(!ExtExpert.Init(Symbol(),Period(),Expert_EveryTick,Expert_MagicNumber))
+     {
+      //--- failed
+      printf(__FUNCTION__+": error initializing expert");
+      ExtExpert.Deinit();
+      return(-1);
+     }
+//--- Creation of signal object
+   CSignalMACD *signal=new CSignalMACD;
+   if(signal==NULL)
+     {
+      //--- failed
+      printf(__FUNCTION__+": error creating signal");
+      ExtExpert.Deinit();
+      return(-2);
+     }
+//--- Add signal to expert (will be deleted automatically))
+   if(!ExtExpert.InitSignal(signal))
+     {
+      //--- failed
+      printf(__FUNCTION__+": error initializing signal");
+      ExtExpert.Deinit();
+      return(-3);
+     }
+//--- Set signal parameters
+   signal.PeriodFast(Inp_Signal_MACD_PeriodFast);
+   signal.PeriodSlow(Inp_Signal_MACD_PeriodSlow);
+   signal.PeriodSignal(Inp_Signal_MACD_PeriodSignal);
+   signal.TakeLevel(Inp_Signal_MACD_TakeProfit);
+   signal.StopLevel(Inp_Signal_MACD_StopLoss);
+//--- Check signal parameters
+   if(!signal.ValidationSettings())
+     {
+      //--- failed
+      printf(__FUNCTION__+": error signal parameters");
+      ExtExpert.Deinit();
+      return(-4);
+     }
+//--- Creation of trailing object
+   CTrailingNone *trailing=new CTrailingNone;
+   if(trailing==NULL)
+     {
+      //--- failed
+      printf(__FUNCTION__+": error creating trailing");
+      ExtExpert.Deinit();
+      return(-5);
+     }
+//--- Add trailing to expert (will be deleted automatically))
+   if(!ExtExpert.InitTrailing(trailing))
+     {
+      //--- failed
+      printf(__FUNCTION__+": error initializing trailing");
+      ExtExpert.Deinit();
+      return(-6);
+     }
+//--- Set trailing parameters
+//--- Check trailing parameters
+   if(!trailing.ValidationSettings())
+     {
+      //--- failed
+      printf(__FUNCTION__+": error trailing parameters");
+      ExtExpert.Deinit();
+      return(-7);
+     }
+//--- Creation of money object
+   CMoneyNone *money=new CMoneyNone;
+   if(money==NULL)
+     {
+      //--- failed
+      printf(__FUNCTION__+": error creating money");
+      ExtExpert.Deinit();
+      return(-8);
+     }
+//--- Add money to expert (will be deleted automatically))
+   if(!ExtExpert.InitMoney(money))
+     {
+      //--- failed
+      printf(__FUNCTION__+": error initializing money");
+      ExtExpert.Deinit();
+      return(-9);
+     }
+//--- Set money parameters
+//--- Check money parameters
+   if(!money.ValidationSettings())
+     {
+      //--- failed
+      printf(__FUNCTION__+": error money parameters");
+      ExtExpert.Deinit();
+      return(-10);
+     }
+//--- Tuning of all necessary indicators
+   if(!ExtExpert.InitIndicators())
+     {
+      //--- failed
+      printf(__FUNCTION__+": error initializing indicators");
+      ExtExpert.Deinit();
+      return(-11);
+     }
+//--- succeed
+   return(INIT_SUCCEEDED);
   }
 //+------------------------------------------------------------------+
-//| Moving Averages Convergence/Divergence                           |
+//| Deinitialization function of the expert                          |
 //+------------------------------------------------------------------+
-int OnCalculate(const int rates_total,
-                const int prev_calculated,
-                const datetime &time[],
-                const double &open[],
-                const double &high[],
-                const double &low[],
-                const double &close[],
-                const long &tick_volume[],
-                const long &volume[],
-                const int &spread[])
+void OnDeinit(const int reason)
   {
-//--- check for data
-   if(rates_total<InpSignalSMA)
-      return(0);
-//--- not all data may be calculated
-   int calculated=BarsCalculated(ExtFastMaHandle);
-   if(calculated<rates_total)
-     {
-      Print("Not all data of ExtFastMaHandle is calculated (",calculated,"bars ). Error",GetLastError());
-      return(0);
-     }
-   calculated=BarsCalculated(ExtSlowMaHandle);
-   if(calculated<rates_total)
-     {
-      Print("Not all data of ExtSlowMaHandle is calculated (",calculated,"bars ). Error",GetLastError());
-      return(0);
-     }
-//--- we can copy not all data
-   int to_copy;
-   if(prev_calculated>rates_total || prev_calculated<0) to_copy=rates_total;
-   else
-     {
-      to_copy=rates_total-prev_calculated;
-      if(prev_calculated>0) to_copy++;
-     }
-//--- get Fast EMA buffer
-   if(IsStopped()) return(0); //Checking for stop flag
-   if(CopyBuffer(ExtFastMaHandle,0,0,to_copy,ExtFastMaBuffer)<=0)
-     {
-      Print("Getting fast EMA is failed! Error",GetLastError());
-      return(0);
-     }
-//--- get SlowSMA buffer
-   if(IsStopped()) return(0); //Checking for stop flag
-   if(CopyBuffer(ExtSlowMaHandle,0,0,to_copy,ExtSlowMaBuffer)<=0)
-     {
-      Print("Getting slow SMA is failed! Error",GetLastError());
-      return(0);
-     }
-//---
-   int limit;
-   if(prev_calculated==0)
-      limit=0;
-   else limit=prev_calculated-1;
-//--- calculate MACD
-   for(int i=limit;i<rates_total && !IsStopped();i++)
-      ExtMacdBuffer[i]=ExtFastMaBuffer[i]-ExtSlowMaBuffer[i];
-//--- calculate Signal
-   SimpleMAOnBuffer(rates_total,prev_calculated,0,InpSignalSMA,ExtMacdBuffer,ExtSignalBuffer);
-//--- OnCalculate done. Return new prev_calculated.
-   return(rates_total);
+   ExtExpert.Deinit();
+  }
+//+------------------------------------------------------------------+
+//| Function-event handler "tick"                                    |
+//+------------------------------------------------------------------+
+void OnTick(void)
+  {
+   ExtExpert.OnTick();
+  }
+//+------------------------------------------------------------------+
+//| Function-event handler "trade"                                   |
+//+------------------------------------------------------------------+
+void OnTrade(void)
+  {
+   ExtExpert.OnTrade();
+  }
+//+------------------------------------------------------------------+
+//| Function-event handler "timer"                                   |
+//+------------------------------------------------------------------+
+void OnTimer(void)
+  {
+   ExtExpert.OnTimer();
   }
 //+------------------------------------------------------------------+
